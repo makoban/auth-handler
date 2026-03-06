@@ -111,7 +111,7 @@
 
     <div id="errorView" style="display:none;">
       <h1>エラー</h1>
-      <p id="errorMsg">認証情報が無効です。もう一度パスワードリセットをお試しください。</p>
+      <p id="errorMsg"></p>
       <div class="services">
         <h2>サービス一覧</h2>
         <a href="https://koubo-navi.bantex.jp/">公募ナビAI</a>
@@ -123,55 +123,75 @@
   </div>
 
   <script>
-    const SUPABASE_URL = "https://ypyrjsdotkeyvzequdez.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_l5yNWlXOZAHABwlbEalGng_R8zioydf";
+    (function() {
+      var SUPABASE_URL = "https://ypyrjsdotkeyvzequdez.supabase.co";
+      var SUPABASE_ANON_KEY = "sb_publishable_l5yNWlXOZAHABwlbEalGng_R8zioydf";
 
-    function showView(id) {
-      ["loadingView", "resetView", "successView", "errorView"].forEach(v => {
-        document.getElementById(v).style.display = v === id ? "block" : "none";
-      });
-    }
+      function showView(id) {
+        ["loadingView", "resetView", "successView", "errorView"].forEach(function(v) {
+          document.getElementById(v).style.display = v === id ? "block" : "none";
+        });
+      }
 
-    // Check if URL hash contains recovery type
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const isRecovery = hashParams.get("type") === "recovery";
+      var hashStr = window.location.hash.substring(1);
+      var hashParams = new URLSearchParams(hashStr);
 
-    if (!isRecovery) {
-      // Not a recovery link - show error immediately
-      showView("errorView");
-    } else {
-      // Initialize Supabase and handle recovery
-      const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      let recoveryHandled = false;
-
-      sb.auth.onAuthStateChange((event, session) => {
-        console.log("auth event:", event);
-        if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && isRecovery)) {
-          if (!recoveryHandled) {
-            recoveryHandled = true;
-            showView("resetView");
-          }
+      // Check for error in URL (e.g. otp_expired)
+      var urlError = hashParams.get("error");
+      var errorCode = hashParams.get("error_code");
+      if (urlError || errorCode) {
+        var msg = "リンクの有効期限が切れています。もう一度パスワードリセットをお試しください。";
+        if (errorCode === "otp_expired") {
+          msg = "リンクの有効期限が切れています。もう一度パスワードリセットをお試しください。";
+        } else {
+          msg = "認証エラーが発生しました（" + (errorCode || urlError) + "）。もう一度お試しください。";
         }
-      });
+        document.getElementById("errorMsg").textContent = msg;
+        showView("errorView");
+        return;
+      }
 
-      // Fallback: if session exists and URL says recovery, show form
-      setTimeout(async () => {
+      // Check if URL hash contains recovery type
+      var isRecovery = hashParams.get("type") === "recovery";
+      if (!isRecovery && !hashParams.get("access_token")) {
+        document.getElementById("errorMsg").textContent = "認証情報が無効です。もう一度パスワードリセットをお試しください。";
+        showView("errorView");
+        return;
+      }
+
+      // Initialize Supabase client
+      var sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      var recoveryHandled = false;
+
+      sbClient.auth.onAuthStateChange(function(event, session) {
+        console.log("auth event:", event);
         if (recoveryHandled) return;
-        const { data } = await sb.auth.getSession();
-        if (data.session && isRecovery) {
+        if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && isRecovery) || (event === "INITIAL_SESSION" && isRecovery && session)) {
           recoveryHandled = true;
           showView("resetView");
-        } else {
-          showView("errorView");
         }
+      });
+
+      // Fallback
+      setTimeout(function() {
+        if (recoveryHandled) return;
+        sbClient.auth.getSession().then(function(result) {
+          if (result.data.session && isRecovery) {
+            recoveryHandled = true;
+            showView("resetView");
+          } else {
+            document.getElementById("errorMsg").textContent = "認証に失敗しました。もう一度パスワードリセットをお試しください。";
+            showView("errorView");
+          }
+        });
       }, 3000);
 
-      document.getElementById("resetForm").addEventListener("submit", async (e) => {
+      document.getElementById("resetForm").addEventListener("submit", function(e) {
         e.preventDefault();
-        const pw = document.getElementById("newPassword").value;
-        const confirmPw = document.getElementById("confirmPassword").value;
-        const statusEl = document.getElementById("status");
-        const btn = document.getElementById("submitBtn");
+        var pw = document.getElementById("newPassword").value;
+        var confirmPw = document.getElementById("confirmPassword").value;
+        var statusEl = document.getElementById("status");
+        var btn = document.getElementById("submitBtn");
 
         if (pw.length < 6) {
           statusEl.innerHTML = '<div class="error">パスワードは6文字以上にしてください。</div>';
@@ -185,17 +205,17 @@
         btn.disabled = true;
         btn.textContent = "変更中...";
 
-        const { error } = await sb.auth.updateUser({ password: pw });
-
-        if (error) {
-          statusEl.innerHTML = '<div class="error">エラー: ' + error.message + '</div>';
-          btn.disabled = false;
-          btn.textContent = "パスワードを変更する";
-        } else {
-          showView("successView");
-        }
+        sbClient.auth.updateUser({ password: pw }).then(function(result) {
+          if (result.error) {
+            statusEl.innerHTML = '<div class="error">エラー: ' + result.error.message + '</div>';
+            btn.disabled = false;
+            btn.textContent = "パスワードを変更する";
+          } else {
+            showView("successView");
+          }
+        });
       });
-    }
+    })();
   </script>
 </body>
 </html>
