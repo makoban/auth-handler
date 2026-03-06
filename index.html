@@ -213,9 +213,7 @@
             return;
           }
 
-          showView("successView");
-
-          // DBからリセット元サービスを取得して自動リダイレクト
+          // DBからリセット元サービスを取得して即リダイレクト
           if (userEmail) {
             fetch(SUPABASE_URL + "/rest/v1/password_reset_origins?email=eq." + encodeURIComponent(userEmail) + "&select=origin_url&limit=1", {
               headers: { "apikey": SUPABASE_ANON_KEY }
@@ -223,22 +221,14 @@
             .then(function(r) { return r.json(); })
             .then(function(rows) {
               if (rows.length > 0 && rows[0].origin_url) {
-                var url = rows[0].origin_url;
-                var count = 3;
-                var msgEl = document.getElementById("redirectMsg");
-                msgEl.textContent = count + "秒後に元のサービスに戻ります...";
-                var timer = setInterval(function() {
-                  count--;
-                  if (count <= 0) {
-                    clearInterval(timer);
-                    window.location.href = url;
-                  } else {
-                    msgEl.textContent = count + "秒後に元のサービスに戻ります...";
-                  }
-                }, 1000);
+                window.location.href = rows[0].origin_url;
+              } else {
+                showView("successView");
               }
             })
-            .catch(function() {});
+            .catch(function() { showView("successView"); });
+          } else {
+            showView("successView");
           }
         });
       });
