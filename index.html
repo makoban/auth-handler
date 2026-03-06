@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>パスワードリセット</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fa;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+      padding: 40px;
+      max-width: 420px;
+      width: 90%;
+      text-align: center;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 8px; color: #333; }
+    p { color: #666; font-size: 0.95rem; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; text-align: left; }
+    label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 6px; }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="password"]:focus { border-color: #4f8cff; }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: #4f8cff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #3a7ae8; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .error { color: #e53e3e; font-size: 0.85rem; margin-top: 8px; }
+    .success { color: #38a169; }
+    .services { margin-top: 24px; text-align: left; }
+    .services h2 { font-size: 0.95rem; color: #555; margin-bottom: 12px; }
+    .services a {
+      display: block;
+      padding: 10px 16px;
+      margin-bottom: 8px;
+      background: #f7f9fc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      color: #4f8cff;
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+    .services a:hover { background: #edf2f7; }
+    .loading { color: #999; }
+    #status { margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <!-- Initial loading state -->
+    <div id="loadingView">
+      <h1>認証処理中...</h1>
+      <p class="loading">しばらくお待ちください</p>
+    </div>
+
+    <!-- Password reset form -->
+    <div id="resetView" style="display:none;">
+      <h1>新しいパスワードを設定</h1>
+      <p>6文字以上の新しいパスワードを入力してください。</p>
+      <form id="resetForm">
+        <div class="form-group">
+          <label for="newPassword">新しいパスワード</label>
+          <input type="password" id="newPassword" minlength="6" required placeholder="6文字以上">
+        </div>
+        <div class="form-group">
+          <label for="confirmPassword">パスワード確認</label>
+          <input type="password" id="confirmPassword" minlength="6" required placeholder="もう一度入力">
+        </div>
+        <button type="submit" class="btn" id="submitBtn">パスワードを変更する</button>
+        <div id="status"></div>
+      </form>
+    </div>
+
+    <!-- Success view -->
+    <div id="successView" style="display:none;">
+      <h1 class="success">パスワードを変更しました</h1>
+      <p>新しいパスワードでログインできます。</p>
+      <div class="services">
+        <h2>サービス一覧</h2>
+        <a href="https://koubo-navi.bantex.jp/">公募ナビAI</a>
+        <a href="https://ai-fudosan.bantex.jp/">AI不動産レポート</a>
+        <a href="https://ai-shoken.bantex.jp/">AI証券レポート</a>
+        <a href="https://ai-shigyo.bantex.jp/">AI士業レポート</a>
+      </div>
+    </div>
+
+    <!-- Error view -->
+    <div id="errorView" style="display:none;">
+      <h1>エラー</h1>
+      <p id="errorMsg">認証情報が無効です。もう一度パスワードリセットをお試しください。</p>
+      <div class="services">
+        <h2>サービス一覧</h2>
+        <a href="https://koubo-navi.bantex.jp/">公募ナビAI</a>
+        <a href="https://ai-fudosan.bantex.jp/">AI不動産レポート</a>
+        <a href="https://ai-shoken.bantex.jp/">AI証券レポート</a>
+        <a href="https://ai-shigyo.bantex.jp/">AI士業レポート</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://ypyrjsdotkeyvzequdez.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_l5yNWlXOZAHABwlbEalGng_R8zioydf";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    function showView(id) {
+      ["loadingView", "resetView", "successView", "errorView"].forEach(v => {
+        document.getElementById(v).style.display = v === id ? "block" : "none";
+      });
+    }
+
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        showView("resetView");
+      } else if (event === "SIGNED_IN" && !window.location.hash.includes("type=recovery")) {
+        // Normal sign in redirect - not a recovery
+        showView("errorView");
+      }
+    });
+
+    // If no auth event fires within 3 seconds, show error
+    setTimeout(() => {
+      if (document.getElementById("loadingView").style.display !== "none") {
+        showView("errorView");
+      }
+    }, 3000);
+
+    document.getElementById("resetForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const pw = document.getElementById("newPassword").value;
+      const confirm = document.getElementById("confirmPassword").value;
+      const statusEl = document.getElementById("status");
+      const btn = document.getElementById("submitBtn");
+
+      if (pw.length < 6) {
+        statusEl.innerHTML = '<div class="error">パスワードは6文字以上にしてください。</div>';
+        return;
+      }
+      if (pw !== confirm) {
+        statusEl.innerHTML = '<div class="error">パスワードが一致しません。</div>';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "変更中...";
+
+      const { error } = await supabase.auth.updateUser({ password: pw });
+
+      if (error) {
+        statusEl.innerHTML = '<div class="error">エラー: ' + error.message + '</div>';
+        btn.disabled = false;
+        btn.textContent = "パスワードを変更する";
+      } else {
+        showView("successView");
+      }
+    });
+  </script>
+</body>
+</html>
