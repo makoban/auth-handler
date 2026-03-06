@@ -75,13 +75,11 @@
 </head>
 <body>
   <div class="card">
-    <!-- Initial loading state -->
     <div id="loadingView">
       <h1>認証処理中...</h1>
       <p class="loading">しばらくお待ちください</p>
     </div>
 
-    <!-- Password reset form -->
     <div id="resetView" style="display:none;">
       <h1>新しいパスワードを設定</h1>
       <p>6文字以上の新しいパスワードを入力してください。</p>
@@ -99,7 +97,6 @@
       </form>
     </div>
 
-    <!-- Success view -->
     <div id="successView" style="display:none;">
       <h1 class="success">パスワードを変更しました</h1>
       <p>新しいパスワードでログインできます。</p>
@@ -112,7 +109,6 @@
       </div>
     </div>
 
-    <!-- Error view -->
     <div id="errorView" style="display:none;">
       <h1>エラー</h1>
       <p id="errorMsg">認証情報が無効です。もう一度パスワードリセットをお試しください。</p>
@@ -129,7 +125,6 @@
   <script>
     const SUPABASE_URL = "https://ypyrjsdotkeyvzequdez.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_l5yNWlXOZAHABwlbEalGng_R8zioydf";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     function showView(id) {
       ["loadingView", "resetView", "successView", "errorView"].forEach(v => {
@@ -137,51 +132,70 @@
       });
     }
 
-    supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY") {
-        showView("resetView");
-      } else if (event === "SIGNED_IN" && !window.location.hash.includes("type=recovery")) {
-        // Normal sign in redirect - not a recovery
-        showView("errorView");
-      }
-    });
+    // Check if URL hash contains recovery type
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const isRecovery = hashParams.get("type") === "recovery";
 
-    // If no auth event fires within 3 seconds, show error
-    setTimeout(() => {
-      if (document.getElementById("loadingView").style.display !== "none") {
-        showView("errorView");
-      }
-    }, 3000);
+    if (!isRecovery) {
+      // Not a recovery link - show error immediately
+      showView("errorView");
+    } else {
+      // Initialize Supabase and handle recovery
+      const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      let recoveryHandled = false;
 
-    document.getElementById("resetForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const pw = document.getElementById("newPassword").value;
-      const confirm = document.getElementById("confirmPassword").value;
-      const statusEl = document.getElementById("status");
-      const btn = document.getElementById("submitBtn");
+      sb.auth.onAuthStateChange((event, session) => {
+        console.log("auth event:", event);
+        if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && isRecovery)) {
+          if (!recoveryHandled) {
+            recoveryHandled = true;
+            showView("resetView");
+          }
+        }
+      });
 
-      if (pw.length < 6) {
-        statusEl.innerHTML = '<div class="error">パスワードは6文字以上にしてください。</div>';
-        return;
-      }
-      if (pw !== confirm) {
-        statusEl.innerHTML = '<div class="error">パスワードが一致しません。</div>';
-        return;
-      }
+      // Fallback: if session exists and URL says recovery, show form
+      setTimeout(async () => {
+        if (recoveryHandled) return;
+        const { data } = await sb.auth.getSession();
+        if (data.session && isRecovery) {
+          recoveryHandled = true;
+          showView("resetView");
+        } else {
+          showView("errorView");
+        }
+      }, 3000);
 
-      btn.disabled = true;
-      btn.textContent = "変更中...";
+      document.getElementById("resetForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const pw = document.getElementById("newPassword").value;
+        const confirmPw = document.getElementById("confirmPassword").value;
+        const statusEl = document.getElementById("status");
+        const btn = document.getElementById("submitBtn");
 
-      const { error } = await supabase.auth.updateUser({ password: pw });
+        if (pw.length < 6) {
+          statusEl.innerHTML = '<div class="error">パスワードは6文字以上にしてください。</div>';
+          return;
+        }
+        if (pw !== confirmPw) {
+          statusEl.innerHTML = '<div class="error">パスワードが一致しません。</div>';
+          return;
+        }
 
-      if (error) {
-        statusEl.innerHTML = '<div class="error">エラー: ' + error.message + '</div>';
-        btn.disabled = false;
-        btn.textContent = "パスワードを変更する";
-      } else {
-        showView("successView");
-      }
-    });
+        btn.disabled = true;
+        btn.textContent = "変更中...";
+
+        const { error } = await sb.auth.updateUser({ password: pw });
+
+        if (error) {
+          statusEl.innerHTML = '<div class="error">エラー: ' + error.message + '</div>';
+          btn.disabled = false;
+          btn.textContent = "パスワードを変更する";
+        } else {
+          showView("successView");
+        }
+      });
+    }
   </script>
 </body>
 </html>
